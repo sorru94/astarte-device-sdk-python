@@ -185,7 +185,7 @@ def main(cb_loop: asyncio.AbstractEventLoop, test_cfg: TestCfg):
         pairing_base_url=test_cfg.pairing_url,
         persistency_dir=persistency_dir,
         loop=cb_loop,
-        ignore_ssl_errors=False,
+        ignore_ssl_errors=True,
     )
     device.add_interfaces_from_dir(test_cfg.interfaces_fld)
     device.on_connected = on_connected_cbk
@@ -347,6 +347,16 @@ def start_call_back_loop(loop: asyncio.AbstractEventLoop) -> None:
 
 
 if __name__ == "__main__":
+    import logging
+    logging.basicConfig(level=logging.INFO)
+
+    os.environ["E2E_REALM"] = "test"
+    os.environ["E2E_DEVICE_2_ID"] = "GbNkraEGT0OP6c9iFMZkfw"
+    os.environ["E2E_CREDENTIALS_SECRET_2"] = "uQMpv4djUNIDGc23Q1Kkmlam0ZCpj/hWUzU0mRmoA1M="
+    os.environ["E2E_APPENGINE_URL"] = "http://localhost:4002"
+    os.environ["E2E_PAIRING_URL"] = "http://localhost:4003"
+    os.environ["E2E_APPENGINE_TOKEN"] = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2ODk5NTQwMDYsImlhdCI6MTY4OTkyNTIwNiwiYV9hZWEiOlsiLio6Oi4qIl19.jHCFoa7pBFzqsDCBxyYRt-EG34GklQ1xBIJaPX1d21brCDuF25u3IiWbA52Ct9HOlxr7By79t_7eEjUMCQ92OA"
+
     # Generate an async loop and thread
     call_back_loop = asyncio.new_event_loop()
     call_back_thread = Thread(target=start_call_back_loop, args=[call_back_loop], daemon=True)
