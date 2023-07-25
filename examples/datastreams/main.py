@@ -34,10 +34,12 @@ _INTERFACES_DIR = _ROOT_DIR.joinpath("interfaces")
 _PERSISTENCY_DIR = _ROOT_DIR.joinpath(_ROOT_DIR, "build")
 if not Path.is_dir(_PERSISTENCY_DIR):
     os.makedirs(_PERSISTENCY_DIR)
-_DEVICE_ID = "DEVICE ID HERE"
-_REALM = "REALM HERE"
-_CREDENTIAL_SECRET = "CREDENTIAL SECRET HERE"
-_PAIRING_URL = "PAIRING URL HERE"
+_DEVICE_ID = "GbNkraEGT0OP6c9iFMZkfw"
+_REALM = "test"
+_CREDENTIAL_SECRET = "lM2WmaTbMZBdhNyfZWZ/elPLDAGKHIidA3X+bCBtbuU="
+# Pairing URL for a local Astarte instance is different from Astarte 1.0 and 1.1
+_PAIRING_URL = "http://localhost:4003"
+# _PAIRING_URL = "http://api.astarte.localhost/pairing"
 _IGNORE_SSL_ERRORS = True
 
 
