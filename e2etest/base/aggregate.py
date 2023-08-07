@@ -27,7 +27,7 @@ from dateutil import parser
 from termcolor import cprint
 
 from astarte.device import Device
-from http_requests import get_server_interface, post_server_interface
+from http_requests import get_server_interface, post_server_interface, prepare_transmit_data
 
 from config import TestCfg
 
@@ -90,13 +90,14 @@ def test_aggregate_from_server_to_device(test_cfg: TestCfg, rx_data_lock: Lock, 
     )
 
     data = copy.deepcopy(test_cfg.mock_data)
-    # Needed untill Astarte is updated to v1.1. See:
-    # https://github.com/astarte-platform/astarte/issues/754
-    # https://github.com/astarte-platform/astarte/issues/753
+    key = "binaryblob_endpoint"
+    data[key] = prepare_transmit_data(key, data[key])
+    key = "binaryblobarray_endpoint"
+    data[key] = prepare_transmit_data(key, data[key])
+    # Needed untill Astarte binblob is patched, track status of:
+    # https://github.com/astarte-platform/astarte/pull/826
     data.pop("binaryblob_endpoint")
-    data.pop("datetime_endpoint")
     data.pop("binaryblobarray_endpoint")
-    data.pop("datetimearray_endpoint")
     post_server_interface(test_cfg, test_cfg.interface_server_aggr, "/sensor-id", data)
 
     time.sleep(1)
