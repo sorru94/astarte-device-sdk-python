@@ -203,17 +203,12 @@ class DeviceGrpc(Device):
         if connectivity in [
             ChannelConnectivity.IDLE,
             ChannelConnectivity.TRANSIENT_FAILURE,
-            ChannelConnectivity.SHUTDOWN,
-        ]:
+            ChannelConnectivity.SHUTDOWN
+            ]:
             last_connection_state = self.__connection_state
             self.__connection_state = ConnectionState.DISCONNECTED
             if last_connection_state is ConnectionState.CONNECTED:
-                if self._on_disconnected:
-                    if self._loop:
-                        # Use threadsafe, as we're in a different thread here
-                        self._loop.call_soon_threadsafe(self._on_disconnected, self, 0)
-                    else:
-                        self._on_disconnected(self, 0)
+                self._call_on_disconnected_cbk()
         elif connectivity is ChannelConnectivity.CONNECTING:
             pass
         elif connectivity is ChannelConnectivity.READY:
@@ -253,6 +248,8 @@ class DeviceGrpc(Device):
                     logging.error("Status code change in the GRPC core: %s", str(exc.code()))
             else:
                 break
+            if (stream is not None) and (self.__connection_state == ConnectionState.DISCONNECTED):
+                logging.error("Reconnection requested.")
 
     def disconnect(self) -> None:
         """
@@ -271,12 +268,7 @@ class DeviceGrpc(Device):
             self.__msghub_stub.Detach(self.__msghub_node)
             self.__grpc_channel.close()
 
-            if self._on_disconnected:
-                if self._loop:
-                    # Use threadsafe, as we're in a different thread here
-                    self._loop.call_soon_threadsafe(self._on_disconnected, self, 0)
-                else:
-                    self._on_disconnected(self, 0)
+            self._call_on_disconnected_cbk()
 
     def is_connected(self) -> bool:
         """
@@ -354,6 +346,14 @@ class DeviceGrpc(Device):
         args
             Unused.
         """
+
+    def _call_on_disconnected_cbk(self):
+        if self._on_disconnected:
+            if self._loop:
+                # Use threadsafe, as we're in a different thread here
+                self._loop.call_soon_threadsafe(self._on_disconnected, self, 0)
+            else:
+                self._on_disconnected(self, 0)
 
 
 def _encode_astarte_message(

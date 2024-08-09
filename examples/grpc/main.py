@@ -24,7 +24,7 @@ Example showing how to send/receive individual datastreams.
 
 import argparse
 import time
-import tomllib
+import toml
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -163,6 +163,9 @@ def stream_data(device: DeviceGrpc):
 # If called as a script
 if __name__ == "__main__":
 
+    import logging
+    # logging.getLogger().setLevel(logging.DEBUG)
+
     # Accept an argument to specify a set time duration for the example
     parser = argparse.ArgumentParser(
         description="Datastream sample for the Astarte device SDK Python"
@@ -176,8 +179,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    with open(_CONFIGURATION_FILE, "rb") as config_fp:
-        config = tomllib.load(config_fp)
+    with open(_CONFIGURATION_FILE, "r") as config_fp:
+        config = toml.load(config_fp)
         _SERVER_ADDR = config["SERVER_ADDR"]
         _NODE_UUID = config["NODE_UUID"]
 
@@ -198,6 +201,14 @@ if __name__ == "__main__":
 
     # Stream some data from device to Astarte
     stream_data(device)
+
+    # Sleep for the example duration
+    # time.sleep(args.duration)
+
+    # device._detach_and_attach_node()
+
+    # Stream some data from device to Astarte
+    # stream_data(device)
 
     # Sleep for the example duration
     time.sleep(args.duration)

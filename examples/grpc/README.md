@@ -15,17 +15,28 @@ An instance of the message hub should be running on an available machine. See th
 Astarte message hub for more information.
 
 ## Usage
+### Configuration file
+Before running the example the configuration file `config.toml` should be updated to contain user
+specific configuration.
 
-Before running the example the following variables must be set at the beginnign of the example
-script.
-
-```python
-_SERVER_ADDR = "SERVER ADDRESS HERE"
-_NODE_UUID = "NODE UUID HERE"
+```toml
+SERVER_ADDR = "<SERVER_ADDR>"
+NODE_UUID = "<NODE_UUID>"
 ```
 
-Then from this folder run the following:
+The `SERVER_ADDR` should be set to the address of the message hub. For example for an instance
+of the message hub running on the same host and using the socket port `50051` a valid value
+would be `localhost:50051`.
+The `NODE_UUID` can be choosed from the user and should be the string representation of an UUID.
+
+### 3. Running the example
+
+To run the example the Astarte device SDK should be installed. Installing the latest release can be
+done through pip with:
 ```shell
-pip install -e ../../
+pip install astarte-device-sdk
+```
+Then to start the example run in the example directory the following command:
+```shell
 python main.py
 ```

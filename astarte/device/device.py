@@ -45,7 +45,8 @@ class ConnectionState(Enum):
 
     CONNECTING = 1
     CONNECTED = 2
-    DISCONNECTED = 3
+    DISCONNECTING = 3
+    DISCONNECTED = 4
 
 
 class Device(ABC):
