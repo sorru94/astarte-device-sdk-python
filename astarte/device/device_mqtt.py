@@ -35,6 +35,7 @@ from astarte.device.database import AstarteDatabase, AstarteDatabaseSQLite
 from astarte.device.device import ConnectionState, Device
 from astarte.device.exceptions import (
     APIError,
+    AuthorizationError,
     DeviceConnectingError,
     DeviceDisconnectedError,
     InterfaceNotFoundError,
@@ -222,7 +223,16 @@ class DeviceMqtt(Device):
         if self.__is_crypto_setup:
             return
 
-        if not crypto.device_has_certificate(self.__crypto_dir):
+        if not crypto.device_has_certificate(
+            self.__crypto_dir
+        ) or not pairing_handler.is_certificate_valid(
+            self.__device_id,
+            self.__realm,
+            self.__credentials_secret,
+            self.__pairing_base_url,
+            self.__ignore_ssl_errors,
+            self.__crypto_dir,
+        ):
             pairing_handler.obtain_device_certificate(
                 self.__device_id,
                 self.__realm,
@@ -458,12 +468,30 @@ class DeviceMqtt(Device):
             self.__mqtt_client.loop_stop()
         # Else check certificate expiration and try reconnection
         # TODO: check for MQTT_ERR_TLS when Paho correctly returns it
-        elif not crypto.certificate_is_valid(self.__crypto_dir):
-            self.__mqtt_client.loop_stop()
-            # If the certificate must be regenerated, old mqtt client is no longer valid as it is
-            # bound to the wrong TLS params and paho does not allow to replace them a second time
-            self.__setup_mqtt_client()
-            self.connect()
+        else:
+            # Check if certificate is valid through a call tho the pairing APIs
+            try:
+                if not crypto.device_has_certificate(
+                    self.__crypto_dir
+                ) or not pairing_handler.is_certificate_valid(
+                    self.__device_id,
+                    self.__realm,
+                    self.__credentials_secret,
+                    self.__pairing_base_url,
+                    self.__ignore_ssl_errors,
+                    self.__crypto_dir,
+                ):
+                    self.__mqtt_client.loop_stop()
+                    # If the certificate must be regenerated, the old mqtt client is no longer valid
+                    # as it is bound to the wrong TLS credentials and paho does not allow to replace
+                    # them after the client creation
+                    self.__setup_mqtt_client()
+                    self.connect()
+            except (AuthorizationError, APIError):
+                # There is an issue with the pairing APIs not responding correctly.
+                # Most likely this is not an issue of certificate expiration. We'll let the
+                # MQTT client handle reconnection.
+                logging.exception("Failed checking MQTT client certificate validity.")
 
     def __on_message(self, _client, _userdata, msg):
         """

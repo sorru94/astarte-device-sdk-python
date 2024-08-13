@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import http
+import os
 from base64 import urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4, uuid5
@@ -209,6 +210,68 @@ def obtain_device_certificate(
         raise exceptions.APIError(res.json())
 
     crypto.import_device_certificate(res.json()["data"]["client_crt"], crypto_store_dir)
+
+
+def is_certificate_valid(
+    device_id: str,
+    realm: str,
+    credentials_secret: str,
+    pairing_base_url: str,
+    ignore_ssl_errors: bool,
+    crypto_store_dir: str,
+) -> bool:
+    """
+    Utility function that checks the validity of a device certificate from Astarte
+
+    Parameters
+    ----------
+    device_id: str
+        The device ID
+    realm: str
+        The Astarte realm where the device is registered
+    pairing_base_url: str
+        The base URL for the Astarte pairing APIs
+    credentials_secret: str
+        The credentials secret for the device in the given realm
+    ignore_ssl_errors: str
+        Set to True to ignore SSL errors
+    crypto_store_dir: str
+        Path to the folder where crypto information are stored
+
+    Raises
+    ------
+    AuthorizationError
+        If the authentication provided was not correct
+    APIError
+        If a generic Error was returned by the APIs
+
+    Returns
+    -------
+    bool
+        True if the certificate is valid, False otherwise.
+    """
+
+    cert_path = os.path.join(crypto_store_dir, "device.crt")
+    with open(cert_path, "r", encoding="utf-8") as file:
+        cert_pem = file.read()
+
+    # Prepare the Pairing API request
+    headers = {"Authorization": f"Bearer {credentials_secret}"}
+    data = {"data": {"client_crt": cert_pem}}
+
+    res = requests.post(
+        f"{pairing_base_url}/v1/{realm}/devices/{device_id}/protocols/astarte_mqtt_v1/credentials/verify",
+        json=data,
+        headers=headers,
+        verify=not ignore_ssl_errors,
+        timeout=DEFAULT_TIMEOUT,
+    )
+    if res.status_code in {http.HTTPStatus.UNAUTHORIZED, http.HTTPStatus.FORBIDDEN}:
+        raise exceptions.AuthorizationError(res.json())
+    if res.status_code != http.HTTPStatus.OK:
+        raise exceptions.APIError(res.json())
+
+    return res.json().get("data", False).get("valid", False)
 
 
 def obtain_device_transport_information(

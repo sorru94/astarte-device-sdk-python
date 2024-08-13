@@ -475,8 +475,12 @@ class UnitTests(unittest.TestCase):
     @mock.patch.object(Client, "tls_set")
     @mock.patch("astarte.device.device_mqtt.pairing_handler.obtain_device_certificate")
     @mock.patch("astarte.device.device_mqtt.crypto.device_has_certificate", return_value=True)
+    @mock.patch(
+        "astarte.device.device_mqtt.pairing_handler.is_certificate_valid", return_value=True
+    )
     def test_connect_crypto_already_has_certificate(
         self,
+        mock_is_certificate_valid,
         mock_has_certificate,
         mock_obtain_certificate,
         mock_tls_set,
@@ -494,6 +498,14 @@ class UnitTests(unittest.TestCase):
         device.connect()
 
         mock_has_certificate.assert_called_once_with("./tests/device_id/crypto")
+        mock_is_certificate_valid.assert_called_once_with(
+            "device_id",
+            "realm_name",
+            "credential_secret",
+            "pairing_base_url",
+            False,
+            "./tests/device_id/crypto",
+        )
         mock_obtain_certificate.assert_not_called()
         mock_tls_set.assert_called_once_with(
             ca_certs=None,
@@ -1269,9 +1281,9 @@ class UnitTests(unittest.TestCase):
 
     @mock.patch.object(DeviceMqtt, "connect")
     @mock.patch.object(Client, "loop_stop")
-    @mock.patch("astarte.device.device_mqtt.crypto.certificate_is_valid", return_value=False)
-    def test__on_disconnect_invalid_certificate(
-        self, mock_cartificate_is_valid, mock_loop_stop, mock_connect
+    @mock.patch("astarte.device.device_mqtt.crypto.device_has_certificate", return_value=False)
+    def test__on_disconnect_missing_certificate(
+        self, mock_device_has_certificate, mock_loop_stop, mock_connect
     ):
         device = self.helper_initialize_device()
 
@@ -1280,15 +1292,18 @@ class UnitTests(unittest.TestCase):
         device._DeviceMqtt__on_disconnect(None, None, rc=paho.mqtt.client.MQTT_ERR_NO_CONN)
 
         on_disconnected_mock.assert_called_once_with(device, paho.mqtt.client.MQTT_ERR_NO_CONN)
-        mock_cartificate_is_valid.assert_called_once_with("./tests/device_id/crypto")
+        mock_device_has_certificate.assert_called_once_with("./tests/device_id/crypto")
         mock_loop_stop.assert_called_once()
         mock_connect.assert_called_once()
 
     @mock.patch.object(DeviceMqtt, "connect")
     @mock.patch.object(Client, "loop_stop")
-    @mock.patch("astarte.device.device_mqtt.crypto.certificate_is_valid", return_value=True)
-    def test__on_disconnect_other_reason(
-        self, mock_cartificate_is_valid, mock_loop_stop, mock_connect
+    @mock.patch("astarte.device.device_mqtt.crypto.device_has_certificate", return_value=True)
+    @mock.patch(
+        "astarte.device.device_mqtt.pairing_handler.is_certificate_valid", return_value=False
+    )
+    def test__on_disconnect_invalid_certificate(
+        self, mock_is_certificate_valid, mock_device_has_certificate, mock_loop_stop, mock_connect
     ):
         device = self.helper_initialize_device()
 
@@ -1297,7 +1312,43 @@ class UnitTests(unittest.TestCase):
         device._DeviceMqtt__on_disconnect(None, None, rc=paho.mqtt.client.MQTT_ERR_NO_CONN)
 
         on_disconnected_mock.assert_called_once_with(device, paho.mqtt.client.MQTT_ERR_NO_CONN)
-        mock_cartificate_is_valid.assert_called_once_with("./tests/device_id/crypto")
+        mock_device_has_certificate.assert_called_once_with("./tests/device_id/crypto")
+        mock_is_certificate_valid.assert_called_once_with(
+            "device_id",
+            "realm_name",
+            "credential_secret",
+            "pairing_base_url",
+            False,
+            "./tests/device_id/crypto",
+        )
+        mock_loop_stop.assert_called_once()
+        mock_connect.assert_called_once()
+
+    @mock.patch.object(DeviceMqtt, "connect")
+    @mock.patch.object(Client, "loop_stop")
+    @mock.patch("astarte.device.device_mqtt.crypto.device_has_certificate", return_value=True)
+    @mock.patch(
+        "astarte.device.device_mqtt.pairing_handler.is_certificate_valid", return_value=True
+    )
+    def test__on_disconnect_other_reason(
+        self, mock_is_certificate_valid, mock_device_has_certificate, mock_loop_stop, mock_connect
+    ):
+        device = self.helper_initialize_device()
+
+        on_disconnected_mock = mock.MagicMock()
+        device.set_events_callbacks(on_disconnected=on_disconnected_mock)
+        device._DeviceMqtt__on_disconnect(None, None, rc=paho.mqtt.client.MQTT_ERR_NO_CONN)
+
+        on_disconnected_mock.assert_called_once_with(device, paho.mqtt.client.MQTT_ERR_NO_CONN)
+        mock_device_has_certificate.assert_called_once_with("./tests/device_id/crypto")
+        mock_is_certificate_valid.assert_called_once_with(
+            "device_id",
+            "realm_name",
+            "credential_secret",
+            "pairing_base_url",
+            False,
+            "./tests/device_id/crypto",
+        )
         mock_loop_stop.assert_not_called()
         mock_connect.assert_not_called()
 

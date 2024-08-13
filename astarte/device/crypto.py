@@ -16,7 +16,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from datetime import datetime, timezone
 from os import path
 
 from cryptography import x509
@@ -101,7 +100,9 @@ def import_device_certificate(client_crt: str, crypto_store_dir: str) -> None:
 
 def device_has_certificate(crypto_store_dir: str) -> bool:
     """
-    Utility function that checks if a certificate is present for the device
+    Utility function that checks if a certificate is present for the device.
+
+    It does not check if the certificate is also valid. Only if it exists.
 
     Parameters
     ----------
@@ -117,37 +118,4 @@ def device_has_certificate(crypto_store_dir: str) -> bool:
     cert_path = path.join(crypto_store_dir, "device.crt")
     key_path = path.join(crypto_store_dir, "device.key")
 
-    return (
-        path.exists(cert_path) and path.exists(key_path) and certificate_is_valid(crypto_store_dir)
-    )
-
-
-def certificate_is_valid(crypto_store_dir: str) -> bool:
-    """
-    Utility function that checks the certificate validity
-
-    Parameters
-    ----------
-    crypto_store_dir: str
-        Path to the folder where crypto information are stored
-
-    Returns
-    -------
-    bool
-        True if the certificate is valid, False otherwise.
-
-    """
-    cert_path = path.join(crypto_store_dir, "device.crt")
-    with open(cert_path, "r", encoding="utf-8") as file:
-        data = file.read()
-    if data:
-        try:
-            certificate = x509.load_pem_x509_certificate(data.encode("ascii"))
-        except ValueError:
-            return False
-        return (
-            certificate.not_valid_before_utc
-            < datetime.now(timezone.utc)
-            < certificate.not_valid_after_utc
-        )
-    return False
+    return path.exists(cert_path) and path.exists(key_path)

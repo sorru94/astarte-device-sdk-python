@@ -162,9 +162,8 @@ class UnitTests(unittest.TestCase):
             mock_load_pem_x509_certificate.return_value.public_bytes.return_value
         )
 
-    @mock.patch("astarte.device.crypto.certificate_is_valid", return_value=True)
     @mock.patch("astarte.device.crypto.path.exists", side_effect=[True, True])
-    def test_device_has_certificate(self, mock_exists, mock_certificate_is_valid):
+    def test_device_has_certificate(self, mock_exists):
         # Has certificate
         self.assertTrue(crypto.device_has_certificate("store directory"))
 
@@ -172,40 +171,19 @@ class UnitTests(unittest.TestCase):
             [mock.call("store directory/device.crt"), mock.call("store directory/device.key")]
         )
         self.assertEqual(mock_exists.call_count, 2)
-        mock_certificate_is_valid.assert_called_once_with("store directory")
-
-        # Certificate is not valid
-        mock_exists.reset_mock()
-        mock_certificate_is_valid.reset_mock()
-
-        mock_certificate_is_valid.return_value = False
-        mock_exists.side_effect = [True, True]
-
-        self.assertFalse(crypto.device_has_certificate("store directory"))
-
-        mock_exists.assert_has_calls(
-            [mock.call("store directory/device.crt"), mock.call("store directory/device.key")]
-        )
-        self.assertEqual(mock_exists.call_count, 2)
-        mock_certificate_is_valid.assert_called_once_with("store directory")
 
         # Certificate file is not present
         mock_exists.reset_mock()
-        mock_certificate_is_valid.reset_mock()
 
-        mock_certificate_is_valid.return_value = True
         mock_exists.side_effect = [False, True]
 
         self.assertFalse(crypto.device_has_certificate("store directory"))
 
         mock_exists.assert_called_once_with("store directory/device.crt")
-        mock_certificate_is_valid.assert_not_called()
 
         # Key file is not present
         mock_exists.reset_mock()
-        mock_certificate_is_valid.reset_mock()
 
-        mock_certificate_is_valid.return_value = True
         mock_exists.side_effect = [True, False]
 
         self.assertFalse(crypto.device_has_certificate("store directory"))
@@ -214,93 +192,3 @@ class UnitTests(unittest.TestCase):
             [mock.call("store directory/device.crt"), mock.call("store directory/device.key")]
         )
         self.assertEqual(mock_exists.call_count, 2)
-        mock_certificate_is_valid.assert_not_called()
-
-    @mock.patch("astarte.device.crypto.datetime")
-    @mock.patch("astarte.device.crypto.x509.load_pem_x509_certificate")
-    @mock.patch("astarte.device.crypto.open", new_callable=mock.mock_open)
-    def test_certificate_is_valid(self, open_mock, mock_load_pem_x509_certificate, mock_datetime):
-        open_mock.return_value.read.return_value = "certificate content"
-        mock_datetime.now.return_value = 42
-        mock_load_pem_x509_certificate.return_value.not_valid_before_utc = 41
-        mock_load_pem_x509_certificate.return_value.not_valid_after_utc = 43
-
-        self.assertTrue(crypto.certificate_is_valid("store directory"))
-
-        open_mock.assert_called_once_with("store directory/device.crt", "r", encoding="utf-8")
-        mock_load_pem_x509_certificate.assert_called_once_with(
-            "certificate content".encode("ascii")
-        )
-        mock_datetime.now.assert_called_once()
-
-    @mock.patch("astarte.device.crypto.datetime")
-    @mock.patch("astarte.device.crypto.x509.load_pem_x509_certificate")
-    @mock.patch("astarte.device.crypto.open", new_callable=mock.mock_open)
-    def test_certificate_is_valid_empty_certificate(
-        self, open_mock, mock_load_pem_x509_certificate, mock_datetime
-    ):
-        open_mock.return_value.read.return_value = ""
-
-        self.assertFalse(crypto.certificate_is_valid("store directory"))
-
-        open_mock.assert_called_once_with("store directory/device.crt", "r", encoding="utf-8")
-        mock_load_pem_x509_certificate.assert_not_called()
-        mock_datetime.now.assert_not_called()
-
-    @mock.patch("astarte.device.crypto.datetime")
-    @mock.patch("astarte.device.crypto.x509.load_pem_x509_certificate")
-    @mock.patch("astarte.device.crypto.open", new_callable=mock.mock_open)
-    def test_certificate_is_valid_load_certificate_raises(
-        self, open_mock, mock_load_pem_x509_certificate, mock_datetime
-    ):
-        open_mock.return_value.read.return_value = "certificate content"
-        mock_load_pem_x509_certificate.side_effect = mock.Mock(side_effect=ValueError("Msg"))
-        mock_datetime.now.return_value = 42
-        mock_load_pem_x509_certificate.return_value.not_valid_before_utc = 41
-        mock_load_pem_x509_certificate.return_value.not_valid_after_utc = 43
-
-        self.assertFalse(crypto.certificate_is_valid("store directory"))
-
-        open_mock.assert_called_once_with("store directory/device.crt", "r", encoding="utf-8")
-        mock_load_pem_x509_certificate.assert_called_once_with(
-            "certificate content".encode("ascii")
-        )
-        mock_datetime.now.assert_not_called()
-
-    @mock.patch("astarte.device.crypto.datetime")
-    @mock.patch("astarte.device.crypto.x509.load_pem_x509_certificate")
-    @mock.patch("astarte.device.crypto.open", new_callable=mock.mock_open)
-    def test_certificate_is_valid_too_old(
-        self, open_mock, mock_load_pem_x509_certificate, mock_datetime
-    ):
-        open_mock.return_value.read.return_value = "certificate content"
-        mock_datetime.now.return_value = 43
-        mock_load_pem_x509_certificate.return_value.not_valid_before_utc = 41
-        mock_load_pem_x509_certificate.return_value.not_valid_after_utc = 43
-
-        self.assertFalse(crypto.certificate_is_valid("store directory"))
-
-        open_mock.assert_called_once_with("store directory/device.crt", "r", encoding="utf-8")
-        mock_load_pem_x509_certificate.assert_called_once_with(
-            "certificate content".encode("ascii")
-        )
-        mock_datetime.now.assert_called_once()
-
-    @mock.patch("astarte.device.crypto.datetime")
-    @mock.patch("astarte.device.crypto.x509.load_pem_x509_certificate")
-    @mock.patch("astarte.device.crypto.open", new_callable=mock.mock_open)
-    def test_certificate_is_valid_too_recent(
-        self, open_mock, mock_load_pem_x509_certificate, mock_datetime
-    ):
-        open_mock.return_value.read.return_value = "certificate content"
-        mock_datetime.now.return_value = 41
-        mock_load_pem_x509_certificate.return_value.not_valid_before_utc = 41
-        mock_load_pem_x509_certificate.return_value.not_valid_after_utc = 43
-
-        self.assertFalse(crypto.certificate_is_valid("store directory"))
-
-        open_mock.assert_called_once_with("store directory/device.crt", "r", encoding="utf-8")
-        mock_load_pem_x509_certificate.assert_called_once_with(
-            "certificate content".encode("ascii")
-        )
-        mock_datetime.now.assert_called_once()
