@@ -21,7 +21,7 @@ from __future__ import annotations
 import collections.abc
 import json
 import logging
-import queue
+from queue import Empty, Queue
 from collections import namedtuple
 from datetime import datetime, timezone
 from threading import Thread
@@ -60,6 +60,7 @@ from astarte.device.exceptions import (
 )
 from astarte.device.interface import Interface
 from astarte.device.mapping import Mapping
+from astarte.device.backoff import Backoff, Timer
 
 
 class DeviceGrpc(Device):
@@ -87,9 +88,7 @@ class DeviceGrpc(Device):
     """
 
     def __init__(
-        self,
-        server_addr: str,
-        node_uuid: str,
+        self, server_addr: str, node_uuid: str, base_backoff: float = 1.0, max_backoff: float = 60.0
     ):
         """
         Parameters
@@ -98,6 +97,10 @@ class DeviceGrpc(Device):
             Address for the GRPC server.
         node_uuid : str
             Unique identifier for this node.
+        base_backoff : float
+            Initial value for the exponential backoff for the reconnection in seconds.
+        max_backoff : float
+            Maximum value for the exponential backoff for the reconnection in seconds.
         """
         super().__init__()
 
@@ -109,8 +112,12 @@ class DeviceGrpc(Device):
         self.__msghub_node = None
         self.__interfaces_bins = {}
         self.__rx_thread_handle = None
-        self.__stream_queue = queue.Queue(maxsize=1)
+        self.__stream_queue = Queue(maxsize=1)
         self.__connection_state = ConnectionState.DISCONNECTED
+        logging.debug("Connection state changed to: %s", str(self.__connection_state))
+
+        self.__reconnection_timer = Timer()
+        self.__reconnection_backoff = Backoff(base_backoff, max_backoff, True)
 
     def add_interface_from_json(self, interface_json: dict):
         """
@@ -177,6 +184,7 @@ class DeviceGrpc(Device):
             return
 
         self.__connection_state = ConnectionState.CONNECTING
+        logging.debug("Connection state changed to: %s", str(self.__connection_state))
 
         self.__grpc_channel = grpc.insecure_channel(self._server_addr)
         self.__grpc_channel.subscribe(self._on_connectivity_change)
@@ -214,19 +222,24 @@ class DeviceGrpc(Device):
             ChannelConnectivity.TRANSIENT_FAILURE,
             ChannelConnectivity.SHUTDOWN,
         ]:
-            last_connection_state = self.__connection_state
-            self.__connection_state = ConnectionState.DISCONNECTED
-            if last_connection_state is ConnectionState.CONNECTED:
-                if self._on_disconnected:
-                    if self._loop:
-                        # Use threadsafe, as we're in a different thread here
-                        self._loop.call_soon_threadsafe(self._on_disconnected, self, 0)
-                    else:
-                        self._on_disconnected(self, 0)
+            if (
+                self.__connection_state is ConnectionState.CONNECTING
+                and connectivity is not ChannelConnectivity.IDLE
+            ) or self.__connection_state is ConnectionState.CONNECTED:
+                self.__reconnection_backoff.reset()
+                self.__reconnection_timer.start(self.__reconnection_backoff.backoff_get_next())
+
+                # Destroy the previous channel
+                self.__grpc_channel.close()
+
+                self.__connection_state = ConnectionState.CONNECTION_ERROR
+                logging.debug("Connection state changed to: %s", str(self.__connection_state))
+                self._call_on_disconnected_cbk()
         elif connectivity is ChannelConnectivity.CONNECTING:
             pass
         elif connectivity is ChannelConnectivity.READY:
             self.__connection_state = ConnectionState.CONNECTED
+            logging.debug("Connection state changed to: %s", str(self.__connection_state))
             if self._on_connected:
                 if self._loop:
                     # Use threadsafe, as we're in a different thread here
@@ -245,8 +258,11 @@ class DeviceGrpc(Device):
         It will terminate only when None is extracted from the __stream_queue.
         """
         while True:
-            stream = self.__stream_queue.get()
-            if stream is not None:
+            try:
+                stream = self.__stream_queue.get(block=False)
+                if stream is None:
+                    break
+
                 try:
                     for astarte_message in stream:
                         (interface_name, path, payload) = _decode_astarte_message(astarte_message)
@@ -260,8 +276,32 @@ class DeviceGrpc(Device):
                             self._on_message_generic(interface_name, path, payload)
                 except _MultiThreadedRendezvous as exc:
                     logging.error("Status code change in the GRPC core: %s", str(exc.code()))
-            else:
-                break
+
+            except Empty:
+                # Do nothing if the stream queue is empty
+                pass
+
+            if (
+                self.__connection_state is ConnectionState.CONNECTION_ERROR
+                and self.__reconnection_timer.is_elapsed()
+            ):
+                logging.error("Attempting reconnection.")
+
+                self.__grpc_channel = grpc.insecure_channel(self._server_addr)
+                self.__grpc_channel.subscribe(self._on_connectivity_change)
+                unary_unary_interceptor = AstarteUnaryUnaryInterceptor(node_id=self._node_uuid)
+                unary__stream_interceptor = AstarteUnaryStreamInterceptor(node_id=self._node_uuid)
+                self.__grpc_channel = grpc.intercept_channel(
+                    self.__grpc_channel, unary_unary_interceptor, unary__stream_interceptor
+                )
+                self.__msghub_stub = MessageHubStub(self.__grpc_channel)
+
+                self.__msghub_node = Node(
+                    uuid=self._node_uuid, interface_jsons=list(self.__interfaces_bins.values())
+                )
+                stream = self.__msghub_stub.Attach(self.__msghub_node)
+                self.__stream_queue.put(stream)
+                self.__reconnection_timer.start(self.__reconnection_backoff.backoff_get_next())
 
     def disconnect(self) -> None:
         """
@@ -274,18 +314,14 @@ class DeviceGrpc(Device):
             return
 
         self.__connection_state = ConnectionState.DISCONNECTED
+        logging.debug("Connection state changed to: %s", str(self.__connection_state))
 
         if self.__grpc_channel:
             self.__stream_queue.put(None)
             self.__msghub_stub.Detach(self.__msghub_node)
             self.__grpc_channel.close()
 
-            if self._on_disconnected:
-                if self._loop:
-                    # Use threadsafe, as we're in a different thread here
-                    self._loop.call_soon_threadsafe(self._on_disconnected, self, 0)
-                else:
-                    self._on_disconnected(self, 0)
+            self._call_on_disconnected_cbk()
 
     def is_connected(self) -> bool:
         """
@@ -363,6 +399,17 @@ class DeviceGrpc(Device):
         args
             Unused.
         """
+
+    def _call_on_disconnected_cbk(self):
+        """
+        Call the _on_disconnected callback if present.
+        """
+        if self._on_disconnected:
+            if self._loop:
+                # Use threadsafe, as we're in a different thread here
+                self._loop.call_soon_threadsafe(self._on_disconnected, self, 0)
+            else:
+                self._on_disconnected(self, 0)
 
 
 def _encode_astarte_message(

@@ -163,6 +163,9 @@ def stream_data(device: DeviceGrpc):
 # If called as a script
 if __name__ == "__main__":
 
+    import logging
+    logging.getLogger().setLevel(logging.DEBUG)
+
     # Accept an argument to specify a set time duration for the example
     parser = argparse.ArgumentParser(
         description="Datastream sample for the Astarte device SDK Python"
@@ -191,10 +194,18 @@ if __name__ == "__main__":
         on_data_received=on_data_received_cbk,
         on_disconnected=on_disconnected_cbk,
     )
-    # # Connect the device
+    # Connect the device
     device.connect()
     while not device.is_connected():
         pass
+
+    # Stream some data from device to Astarte
+    stream_data(device)
+
+    # Sleep for the example duration
+    time.sleep(args.duration)
+
+    # device._detach_and_attach_node()
 
     # Stream some data from device to Astarte
     stream_data(device)

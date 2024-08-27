@@ -16,5 +16,5 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-SERVER_ADDR = "<SERVER_ADDR>"
-NODE_UUID = "<NODE_UUID>"
+SERVER_ADDR = "localhost:50051"
+NODE_UUID = "98bb9fe5-b4ce-4dea-9b88-8d1f8525e4b4"
