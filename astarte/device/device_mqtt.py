@@ -147,7 +147,7 @@ class DeviceMqtt(Device):
         """
         Utility function used to setup an MQTT client.
         """
-        self.__mqtt_client = mqtt.Client()
+        self.__mqtt_client = mqtt.Client(clean_session=True)
         self.__mqtt_client.on_connect = self.__on_connect
         self.__mqtt_client.on_disconnect = self.__on_disconnect
         self.__mqtt_client.on_message = self.__on_message
@@ -421,6 +421,8 @@ class DeviceMqtt(Device):
 
         self.__connection_state = ConnectionState.CONNECTED
 
+        logging.warning(f"Session present {flags["session present"]}")
+
         if not flags["session present"]:
             logging.debug("Session flag is not present, performing a clean session procedure")
             self.__setup_subscriptions()
@@ -575,9 +577,14 @@ class DeviceMqtt(Device):
         """
         Utility function used to send the "empty cache" message to Astarte
         """
+
+        # empty_cache_value = b"1"
+        empty_cache_value = b"0"
+        logging.warning(f"Sending empty cache {empty_cache_value}")
+
         self.__mqtt_client.publish(
             f"{self.__get_base_topic()}/control/emptyCache",
-            payload=b"1",
+            payload=empty_cache_value,
             retain=False,
             qos=2,
         )
@@ -596,8 +603,15 @@ class DeviceMqtt(Device):
                 self._send_generic(interface, interface_path, value, timestamp=None)
                 interfaces_list += [interface_name + interface_path]
         interfaces_str = ";".join(interfaces_list)
-        payload = bytearray(len(interfaces_str).to_bytes(4, byteorder="little"))
-        payload.extend(zlib.compress(interfaces_str.encode("utf-8")))
+
+        # payload = bytearray(len(interfaces_str).to_bytes(4, byteorder="little"))
+        # payload.extend(zlib.compress(interfaces_str.encode("utf-8")))
+
+        payload = bytearray([0xFF, 0xFF, 0xFF, 0xFF])
+        payload.extend(interfaces_str.encode("utf-8"))
+
+        logging.warning(f"Sending purge properties string {interfaces_str}")
+        logging.warning(f"Sending purge properties payload {payload}")
 
         self.__mqtt_client.publish(
             f"{self.__get_base_topic()}/control/producer/properties",
@@ -617,7 +631,9 @@ class DeviceMqtt(Device):
             purging.
         """
         allowed_properties = []
-        decompressed_payload = zlib.decompress(payload[4:]).decode("utf-8")
+
+        # decompressed_payload = zlib.decompress(payload[4:]).decode("utf-8")
+        decompressed_payload = payload[4:]
         if decompressed_payload:
             # Parse the received list of set properties.
             for full_path in [p.split("/") for p in decompressed_payload.split(";")]:
